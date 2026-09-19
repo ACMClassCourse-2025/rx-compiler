@@ -1,50 +1,52 @@
-# Rx Compiler Template
+# Rx 编译器模板
 
-> Replace this README with your own README when you start working on your compiler.
+[English](README.md.en) | [简体中文](README.md)
 
-## Getting Started
+> 开始编写你的编译器时，请用你自己的 README 替换本文档。
 
-Welcome to the Rx Compiler course! This repository provides a template from which you can build your own compiler for the Rx programming language. It includes official testcases, a test scaffold, and the G4 representation of Rx to get you started.
+## 快速上手
 
-We strongly recommend that you **fork this repository** instead of downloading zips, in case we need to update the official testcases. After forking your copy, clone it to your local machine.
+欢迎来到 Rx Compiler！本仓库提供了一个工程模板，供你基于此构建自己的 Rx 编程语言编译器。它包含了官方测试用例、测试脚手架以及 Rx 语言的 G4 文法定义，帮助你快速起步。
 
-Initialize the testcases and [REIMU](https://github.com/wanoful/REIMU) submodules:
+我们强烈建议你 **Fork 本仓库**，以便我们在更新官方测试用例时你可以方便地同步更新。Fork 之后，将其克隆到你的本地。
+
+初始化测试用例与 [REIMU](https://github.com/wanoful/REIMU) 子模块：
 
 ```sh
 git submodule update --init --recursive
 ```
 
-It requires Python 3, [xmake](https://xmake.io/), and a C++23 compiler to build REIMU. Build REIMU separately from the project root before running tests:
+编译 REIMU 需要 Python 3、[xmake](https://xmake.io/) 以及支持 C++23 的编译器。在运行测试前，请在项目根目录下单独编译 REIMU：
 
 ```sh
 xmake f -y -P vendor/REIMU -m release -o target/reimu
 xmake -y -P vendor/REIMU
 ```
 
-Repeat these commands after updating the REIMU submodule. `make test` builds the reference runtime through `BUILD`. Codegen tests compile to RV32IM assembly and execute in REIMU, with testcase input and output connected to stdin and stdout.
+在更新 REIMU 子模块后需重复执行上述命令。`make test` 会通过 `BUILD` 构建参考运行时。代码生成测试会将代码编译为 RV32IM 汇编并在 REIMU 中执行，测试用例的输入和输出将分别连接至标准输入（stdin）和标准输出（stdout）。
 
-## Overview
+## 概述
 
-In this course you can use **any language** to implement your compiler. Contact the TA if your language is not mainstream so that we can provide support for it on the Online Judge. For this reason, the template we provide here is **language-agnostic**. You will find:
+在本门课程中，你可以使用**任意语言**来实现你的编译器。如果你的实现语言较为冷门，请联系助教以便我们在 Online Judge（评测机）上提供支持。因此，我们在此提供的模板是**与实现语言无关的（language-agnostic）**。仓库中包含：
 
-- Testcases under `tests/`. Official testcases reside under `tests/official` and is a git submodule. You may add your own testcases under `tests/custom`.
-- A test runner. The `Makefile` runs testcases using the compiler configured in `config.mk`. By default it uses your system rustc with the `riscv32im-unknown-none-elf` target and executes generated assembly in REIMU. **Replace the compiler commands in `config.mk` with your own compiler commands** to set up testing for your compiler. See [Running tests](#running-tests) for details.
-    - Some auxiliary files helps default rustc to output assembly file suitable for REIMU. It uses `scripts/reference.rs` for its bare-metal entry point, `Box`/`Vec` allocation, and panic handling. `crates/rx` implements integer I/O through REIMU's libc. The reference codegen command requests both assembly and a static library so rustc performs whole-program LTO and includes the runtime in the assembly. The extra `{output}.a` is a build artifact; `RUN` consumes `{output}` after `scripts/strip_asm_debug.py` removes debug metadata that REIMU cannot assemble. These helpers can be removed when you replace the Rust compiler commands.
-- REIMU under `vendor/REIMU`, pinned as a git submodule. The `RUN` command in `config.mk` invokes it; the test runner does not depend on a particular simulator.
-- G4 grammar for Rx under `grammar/`. You may use it to generate the lexer and parser for your compiler.
+- `tests/` 目录下的测试用例。官方测试用例位于 `tests/official`（作为 Git 子模块引入）。你可以在 `tests/custom` 下添加自己的测试用例。
+- 测试运行器（Test runner）。`Makefile` 会调用在 `config.mk` 中配置的编译器来运行测试用例。默认情况下，它使用系统安装的 rustc（目标架构为 `riscv32im-unknown-none-elf`），并在 REIMU 中执行生成的汇编代码。**请将 `config.mk` 中的编译器命令替换为你自己的编译器命令**，以此为你的编译器配置测试。详见[运行测试](#运行测试)。
+    - 一些辅助文件用于帮助默认的 rustc 输出适合 REIMU 的汇编文件。其中 `scripts/reference.rs` 提供了裸机程序入口点（bare-metal entry point）、`Box`/`Vec` 内存分配以及 panic 处理；`crates/rx` 通过 REIMU 的 libc 实现了整数 I/O。默认的 codegen 命令同时请求生成汇编和静态库，以便 rustc 进行全程序 LTO（链接时优化）并将运行时包含在汇编中。生成的额外 `{output}.a` 属于构建产物；在 `scripts/strip_asm_debug.py` 去除 REIMU 无法汇编的调试元数据后，`RUN` 将消费并执行 `{output}`。当你将编译器命令替换为你自己的编译器时，这些辅助文件均可移除。
+- `vendor/REIMU` 下的 REIMU，为 Git 子模块。`config.mk` 中的 `RUN` 命令会调用它；测试运行器本身并不依赖特定的模拟器。
+- `grammar/` 目录下的 Rx 语言 G4 文法。你可以使用它来为编译器生成词法分析器和语法分析器。
 
-## Setting up the Makefile
+## 配置 Makefile
 
-The Makefile is our unified entrypoint in accessing your compiler. You are expected to edit [`config.mk`](config.mk) and hook in your compiler commands. In practice, specify in these fields:
+Makefile 是调用你编译器的统一入口。你需要编辑 [`config.mk`](config.mk) 并接入你的编译器命令。具体来说，需要配置以下字段：
 
-| Command Name | Purpose |
+| 命令名称 | 用途 |
 | --- | --- |
-| `BUILD` | The command to build your compiler, can be empty. Must exit 0. |
-| `SEMANTIC` | Check a complete program through semantic analysis. Exit 0 to accept or 1 to reject. |
-| `CODEGEN` | Compile codegen and optimization testcases and write RV32IM assembly to `{output}` for the default `RUN`. |
-| `RUN` | Run `{output}`. Optional `{stdout}` and `{profile}` placeholders select per-execution output and profiling files. |
+| `BUILD` | 构建编译器的命令，可为空。执行必须以退出码 0 结束。 |
+| `SEMANTIC` | 对完整程序进行语义分析检查。接受（通过）时退出码为 0，拒绝（未通过）时退出码为 1。 |
+| `CODEGEN` | 编译代码生成（codegen）与优化（optimization）测试用例，并将生成的 RV32IM 汇编输出到 `{output}`，供默认的 `RUN` 命令调用。 |
+| `RUN` | 运行 `{output}`。可选占位符 `{stdout}` 和 `{profile}` 分别用于指定单次执行的输出重定向文件和性能剖析文件。 |
 
-For example, if your compiler supports `--stage` and `-o` and emits RV32IM assembly:
+例如，如果你的编译器支持 `--stage` 和 `-o` 选项并输出 RV32IM 汇编：
 
 ```make
 BUILD = cargo build --release
@@ -53,29 +55,29 @@ CODEGEN = ./target/release/compiler --stage codegen {source} -o {output}
 RUN = xmake run -P vendor/REIMU reimu -f {output} -o {stdout} -p {profile} 1>&2
 ```
 
-REIMU starts at the assembly's global `main` symbol and provides its supported libc functions. `-o {stdout}` saves the program's output for comparison, `-p {profile}` saves its cycle profile, and `1>&2` sends simulator status messages to the stderr log. Do not add `--silent` when collecting cycles: REIMU suppresses profiles in silent mode. If your compiler needs additional runtime assembly, pass it with the program using `-f {output},path/to/runtime.s`.
+REIMU 从汇编代码中的全局 `main` 符号处开始执行，并提供其支持的 libc 函数。`-o {stdout}` 保存程序输出以供比对，`-p {profile}` 保存周期剖析数据（cycle profile），`1>&2` 将模拟器的状态消息重定向到标准错误日志中。在统计周期数时请勿添加 `--silent` 参数：REIMU 在静默模式下会抑制 profile 的生成。如果你的编译器需要额外的运行时汇编文件，可以通过 `-f {output},path/to/runtime.s` 与程序一同传入。
 
-## Testcases
+## 测试用例
 
-Tests reside in `tests/`, and are organized into subdirectories. We recommend you follow the "namespace:test-suite:testcase" pattern. For instance, `official:semantic:arrays` is the `arrays` testcase in the `semantic` test suite of the `official` namespace.
+测试用例位于 `tests/` 目录下，并按子目录组织。建议遵循 "命名空间:测试集:测试用例"（namespace:test-suite:testcase）的命名规范。例如，`official:semantic:arrays` 表示 `official` 命名空间下 `semantic` 测试集中的 `arrays` 测试用例。
 
-Each testcase can have one or more source files, optional input and output files and a compulsory `manifest.json` file which defines the format of the testcase. See [the official schema](tests/official/manifest.schema.json) for details. The manifest's `stage` argument determines how the testcase runs: `semantic` uses `SEMANTIC`, while `codegen` and `optimization` use `CODEGEN` followed by `RUN`.
+每个测试用例可以包含一个或多个源文件、可选的输入和输出文件，以及一个必需的 `manifest.json` 清单文件（用于定义该测试用例的格式）。详情请参阅[官方 Schema](tests/official/manifest.schema.json)。清单中的 `stage` 参数决定了该测试用例的运行方式：`semantic` 调用 `SEMANTIC`，而 `codegen` 和 `optimization` 则先调用 `CODEGEN`，随后调用 `RUN`。
 
-You are encouraged to add your own testcases under `tests/custom`. The runner will find them automatically.
+鼓励在 `tests/custom` 目录下添加你自己的测试用例，测试运行器会自动发现并加载它们。
 
-Requirements for each kind of testcase:
+各类测试用例的要求如下：
 
-| Testcase Type | Requirements |
+| 测试用例类型 | 判定要求 |
 | --- | --- |
-| Semantic | The compiler must exit 0 or 1 to match `compilation_success`. Other exit codes, signals, and timeouts fail the case. |
-| Codegen | Compilation must exit 0 and create `{output}`. Each `io` pair runs the artifact and the output must match the expected file. |
-| Optimization | Same as Codegen, with cycle reporting when `RUN` provides `{profile}`. |
+| Semantic | 编译器退出码必须为 0 或 1，且与 `compilation_success` 相符。其他退出码、异常信号或超时均视为用例失败。 |
+| Codegen | 编译必须以退出码 0 结束并生成 `{output}`。每组 `io` 对都会执行该构建产物，且输出必须与预期文件完全匹配。 |
+| Optimization | 判定要求同代码生成；当 `RUN` 提供 `{profile}` 占位符时，会额外报告周期数。 |
 
-Testcases with type `lex` and `parse` will be skipped since we already provide the G4 grammar. Extend the Makefile if you want to DIY these stages.
+类型为 `lex` 和 `parse` 的测试用例将被跳过，因为我们已经提供了 G4 文法。如果你希望自行实现这些阶段，可以扩展 Makefile。
 
-## Running tests
+## 运行测试
 
-Run from the project root:
+在项目根目录下运行：
 
 ```sh
 make test
@@ -86,24 +88,24 @@ make test FILTER=official:optimization COMPILE_TIMEOUT=60 RUN_TIMEOUT=30
 make test VERBOSE=true
 ```
 
-Supported environment variables include:
+支持的环境变量包括：
 
-- `FILTER`, which selects directories under `tests`, using `:` between folder names and `,` between selections. Omit `FILTER` or leave it empty to run all supported tests.
-- `VERBOSE=true`, which shows every test name and its duration instead of grouped progress. Defaults to `false`.
-- `COMPILE_TIMEOUT` and `RUN_TIMEOUT`, which override the default timeouts for compilation and execution.
+- `FILTER`：用于筛选 `tests` 下的目录，文件夹名称之间使用 `:` 分隔，不同项之间使用 `,` 分隔。省略 `FILTER` 或留空则运行所有支持的测试。
+- `VERBOSE=true`：显示每个测试的名称及其耗时，而非分组进度。默认为 `false`。
+- `COMPILE_TIMEOUT` 与 `RUN_TIMEOUT`：覆盖默认的编译与运行超时时限。
 
-## Optimization cycle reports
+## Optimization 报告
 
-Run the optimization suite with:
+运行 Optimization 测试集：
 
 ```sh
 make test FILTER=official:optimization
 ```
 
-The runner prints REIMU's `Total cycles` for each input/output pair of every passing testcase with `"stage": "optimization"` in its manifest, followed by their total.
+测试运行器会打印清单中带有 `"stage": "optimization"` 且通过测试的每个测试用例及其每组输入/输出对在 REIMU 中的 `Total cycles`（总周期数），并在最后输出它们的总和。
 
-Each test session saves `optimization-cycles.json` in its log directory under `target/tests/run-.../`. The report records the testcase, input, I/O pair index, cycles, and path to the raw `run-N.profile` for each execution. Raw profiles also contain REIMU's instruction and libc operation counts. Failed testcases are excluded from cycle totals. Reports appear in both normal and `VERBOSE=true` output.
+每次测试会话都会在 `target/tests/run-.../` 的日志目录下保存 `optimization-cycles.json`。该报告记录了每次执行的测试用例、输入、I/O 对索引、周期数以及原始 `run-N.profile` 的路径。原始 profile 还包含了 REIMU 记录的指令数和 libc 操作数。未通过的测试用例不计入总周期数。优化报告在普通输出和 `VERBOSE=true` 模式下均会显示。
 
-These are REIMU's simulated, weighted cycle counts, including libc costs. Use the same REIMU weights and cache/predictor settings when comparing compiler optimizations.
+这些周期数是 REIMU 模拟的加权周期计数，包含了 libc 的开销。在对比不同编译器的优化效果时，请确保使用相同的 REIMU 权重以及缓存/分支预测器配置。
 
-Custom `RUN` commands that omit `{profile}` continue to work without cycle reporting. When `{profile}` is present, optimization runs must produce a profile containing exactly one `Total cycles: N` line; a missing or invalid profile fails the case rather than reporting a misleading zero.
+省略了 `{profile}` 的自定义 `RUN` 命令仍然可以正常执行，只是不会报告周期数。当提供 `{profile}` 时，优化测试的运行必须生成恰好包含一行 `Total cycles: N` 的 profile；若 profile 缺失或格式无效，该测试用例将判定为失败，以避免错误报告误导性的 0 周期。

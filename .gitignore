@@ -1,6 +1,9 @@
 # Rust
 /target
 
+# REIMU build configuration
+/.xmake/
+
 # ANTLR
 .antlr
 

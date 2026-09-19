@@ -18,7 +18,8 @@ import textwrap
 import time
 
 
-STAGES = ("semantic", "codegen")
+RUNTIME_STAGES = ("codegen", "optimization")
+STAGES = ("semantic", *RUNTIME_STAGES)
 
 
 class TestError(Exception):
@@ -38,6 +39,15 @@ class Case:
     def label(self):
         directory = ":".join(self.directory)
         return f"{directory}/{self.source.name}" if directory else self.source.name
+
+    @property
+    def optimization(self):
+        return self.stage == "optimization"
+
+    @property
+    def compiler_command(self):
+        # Both runtime stages use the CODEGEN command from config.mk.
+        return "codegen" if self.stage in RUNTIME_STAGES else self.stage
 
 
 def display_path(path):
@@ -112,7 +122,7 @@ class Reporter:
         if self.line_length >= self.width - 8:
             self.finish_line()
 
-    def finish(self, failures, executions, elapsed):
+    def finish(self, failures, executions, elapsed, cycles=(), cycle_file=None):
         self.finish_line()
         print()
         if failures:
@@ -132,6 +142,18 @@ class Reporter:
                     print("    " + (self.paint(line, style) if style else line))
                 print(f"\n   logs: {self.paint(display_path(work), 'dim')}")
             print()
+        if cycles:
+            self.heading("optimization cycles (REIMU)")
+            previous = None
+            for row in cycles:
+                if row["testcase"] != previous:
+                    print(self.paint(row["testcase"], "bold"))
+                    previous = row["testcase"]
+                inp = Path(row["input"]).name if row["input"] else "empty stdin"
+                print(f"  io {row['io']:>2}: {row['cycles']:>15,} cycles  {inp}")
+            total = sum(row["cycles"] for row in cycles)
+            print(f"Total: {total:,} cycles across {len(cycles)} input/output pairs")
+            print(f"report: {self.paint(display_path(cycle_file), 'dim')}\n")
         if executions:
             noun = "check" if executions == 1 else "checks"
             print(f"{executions} runtime {noun} passed")
@@ -180,8 +202,8 @@ def discover(root):
                 pairs = entry.get("io", [])
                 if "io" in entry and (not isinstance(pairs, list) or not pairs):
                     raise TestError(f"entry {index}: io must be a nonempty array")
-                if entry["stage"] == "codegen" and (not entry["compilation_success"] or not pairs):
-                    raise TestError(f"entry {index}: codegen requires compilation_success=true and io")
+                if entry["stage"] in RUNTIME_STAGES and (not entry["compilation_success"] or not pairs):
+                    raise TestError(f"entry {index}: {entry['stage']} requires compilation_success=true and io")
                 io = []
                 for pair in pairs:
                     if not isinstance(pair, dict) or pair.keys() != {"input", "output"}:
@@ -196,7 +218,7 @@ def discover(root):
         except (TestError, ValueError, OSError) as error:
             raise TestError(f"{manifest}: {error}") from error
     if not cases:
-        raise TestError(f"no semantic or codegen testcases found under {root}")
+        raise TestError(f"no semantic, codegen, or optimization testcases found under {root}")
     return cases
 
 
@@ -216,9 +238,10 @@ def select(cases, expression):
     return [c for c in cases if any(c.directory[:len(parts)] == parts for parts in selectors)]
 
 
-def expand(command, source, output):
-    values = {"source": source, "output": output}
-    return re.sub(r"\{(source|output)\}", lambda match: shlex.quote(str(values[match[1]])), command)
+def expand(command, source, output, **paths):
+    values = {"source": source, "output": output, **paths}
+    pattern = r"\{(" + "|".join(values) + r")\}"
+    return re.sub(pattern, lambda match: shlex.quote(str(values[match[1]])), command)
 
 
 def execute(command, prefix, timeout, stdin=None):
@@ -243,23 +266,51 @@ def excerpt(path):
         return stream.read(4000).decode(errors="replace").rstrip()
 
 
+def read_cycles(profile):
+    try:
+        contents = profile.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise TestError(f"cannot read REIMU cycle profile {display_path(profile)}: {error}") from error
+    matches = re.findall(r"^Total cycles:[ \t]*([0-9]+)[ \t]*$", contents, re.MULTILINE)
+    if len(matches) != 1:
+        raise TestError(f"expected one 'Total cycles: N' line in {display_path(profile)}; "
+                        "check RUN profiling options (REIMU --silent disables profiling)")
+    return int(matches[0])
+
+
+def write_cycle_report(directory, cycles):
+    if not cycles:
+        return None
+    path = directory / "optimization-cycles.json"
+    path.write_text(json.dumps({
+        "metric": "REIMU Total cycles",
+        "total_cycles": sum(row["cycles"] for row in cycles),
+        "runs": cycles,
+    }, indent=2) + "\n")
+    return path
+
+
 def run_case(case, commands, directory, compile_timeout, run_timeout):
     output = directory / "program"
     prefix = directory / "compile"
-    command = expand(commands[case.stage], case.source, output)
+    command = expand(commands[case.compiler_command], case.source, output)
     code = execute(command, prefix, compile_timeout)
     # Exit 1 is a normal diagnostic rejection. Panics, signals, missing tools,
     # and other unexpected exits must never pass a negative testcase.
     expected = 0 if case.success else 1
     if code != expected:
         raise TestError(f"compiler exited {code}, expected {expected}\n{excerpt(prefix.with_suffix('.stderr'))}")
-    if case.stage != "codegen":
-        return
+    if case.stage not in RUNTIME_STAGES:
+        return []
     if not output.is_file():
         raise TestError("compiler succeeded but did not create {output}")
+    cycles = []
     for index, (stdin, expected_file) in enumerate(case.io, 1):
         prefix = directory / f"run-{index}"
-        code = execute(expand(commands["run"], case.source, output), prefix, run_timeout, stdin)
+        stdout = prefix.with_suffix(".stdout")
+        profile = prefix.with_suffix(".profile")
+        command = expand(commands["run"], case.source, output, stdout=stdout, profile=profile)
+        code = execute(command, prefix, run_timeout, stdin)
         if code != 0:
             raise TestError(f"io pair {index}: program exited {code}\n{excerpt(prefix.with_suffix('.stderr'))}")
         actual = prefix.with_suffix(".stdout").read_bytes()
@@ -272,6 +323,15 @@ def run_case(case, commands, directory, compile_timeout, run_timeout):
             diff = "".join(line if line.endswith("\n") else
                            line + "\n\\ No newline at end of file\n" for line in lines)[:4000]
             raise TestError(f"io pair {index}: stdout differs (expected {len(expected)} bytes, got {len(actual)})\n{diff}")
+        if case.optimization and "{profile}" in commands["run"]:
+            cycles.append({
+                "testcase": case.label,
+                "io": index,
+                "input": display_path(stdin) if stdin else None,
+                "cycles": read_cycles(profile),
+                "profile": display_path(profile),
+            })
+    return cycles
 
 
 def positive_timeout(name, default):
@@ -291,8 +351,9 @@ def main():
     try:
         selected_filter = os.environ.get("FILTER", "")
         cases = select(discover(args.tests_dir.resolve()), selected_filter)
-        commands = {stage: os.environ.get(f"RX_TEST_{stage.upper()}", "") for stage in (*STAGES, "run")}
-        for stage in {c.stage for c in cases} | ({"run"} if any(c.stage == "codegen" for c in cases) else set()):
+        commands = {name: os.environ.get(f"RX_TEST_{name.upper()}", "")
+                    for name in ("semantic", "codegen", "run")}
+        for stage in {c.compiler_command for c in cases} | ({"run"} if any(c.stage in RUNTIME_STAGES for c in cases) else set()):
             if not commands[stage].strip():
                 raise TestError(f"set {stage.upper()} in config.mk before running these tests")
         compile_timeout = positive_timeout("COMPILE_TIMEOUT", "30")
@@ -311,20 +372,23 @@ def main():
             print()
         failures = []
         executions = 0
+        cycles = []
         for index, case in enumerate(cases, 1):
             work = directory / f"{index:04d}"
             work.mkdir()
             case_started = time.monotonic()
             try:
-                run_case(case, commands, work, compile_timeout, run_timeout)
-                executions += len(case.io) if case.stage == "codegen" else 0
+                case_cycles = run_case(case, commands, work, compile_timeout, run_timeout)
+                cycles.extend(case_cycles)
+                executions += len(case.io) if case.stage in RUNTIME_STAGES else 0
             except (TestError, OSError) as error:
                 elapsed = time.monotonic() - case_started
                 failures.append((case, str(error), work, elapsed))
                 reporter.result(case, False, elapsed)
             else:
                 reporter.result(case, True, time.monotonic() - case_started)
-        reporter.finish(failures, executions, time.monotonic() - started)
+        cycle_file = write_cycle_report(directory, cycles)
+        reporter.finish(failures, executions, time.monotonic() - started, cycles, cycle_file)
         return 1 if failures else 0
     except (TestError, OSError, ValueError) as error:
         reporter.error(str(error))

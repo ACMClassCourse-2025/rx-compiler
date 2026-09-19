@@ -62,9 +62,11 @@ make test FILTER=official:semantic
 make test FILTER=official:codegen:arrays,official:optimization
 make test FILTER=custom
 make test FILTER=official:optimization COMPILE_TIMEOUT=60 RUN_TIMEOUT=30
+make test VERBOSE=true
 ```
 
 Supported environment variables include:
 
 - `FILTER`, which selects directories under `tests`, using `:` between folder names and `,` between selections. Omit `FILTER` or leave it empty to run all supported tests.
+- `VERBOSE=true`, which shows every test name and its duration instead of grouped progress. Defaults to `false`.
 - `COMPILE_TIMEOUT` and `RUN_TIMEOUT`, which override the default timeouts for compilation and execution.

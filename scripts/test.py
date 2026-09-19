@@ -9,10 +9,13 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import textwrap
+import time
 
 
 STAGES = ("semantic", "codegen")
@@ -29,11 +32,117 @@ class Case:
     stage: str
     success: bool
     io: list
+    description: str = ""
 
     @property
     def label(self):
         directory = ":".join(self.directory)
         return f"{directory}/{self.source.name}" if directory else self.source.name
+
+
+def display_path(path):
+    return os.path.relpath(path)
+
+
+class Reporter:
+    """Small, dependency-free terminal reporter; redirected output stays plain."""
+
+    STYLES = {"bold": "1", "dim": "2", "red": "31", "green": "32", "cyan": "36"}
+
+    def __init__(self, verbose):
+        self.verbose = verbose
+        self.width = max(40, min(120, shutil.get_terminal_size((80, 24)).columns))
+        self.total = 0
+        self.completed = 0
+        self.group = None
+        self.line_length = 0
+
+    def paint(self, text, style, stream=None):
+        stream = sys.stdout if stream is None else stream
+        enabled = (
+            stream.isatty()
+            and "NO_COLOR" not in os.environ and os.environ.get("TERM") != "dumb"
+        )
+        return f"\033[{self.STYLES[style]}m{text}\033[0m" if enabled else text
+
+    def heading(self, title, style="bold", fill="="):
+        print(self.paint(f" {title} ".center(self.width, fill), style), flush=True)
+
+    def start(self, cases, selected_filter, directory):
+        self.total = len(cases)
+        self.heading("test session starts")
+        stages = ", ".join(f"{sum(c.stage == stage for c in cases)} {stage}"
+                           for stage in STAGES if any(c.stage == stage for c in cases))
+        print(f"collected {self.paint(str(self.total), 'bold')} tests ({stages})")
+        if selected_filter:
+            print(f"filter: {selected_filter}")
+        print(f"logs: {self.paint(display_path(directory), 'dim')}")
+        if not self.verbose:
+            print(self.paint(". passed  F failed", "dim"))
+        print(flush=True)
+
+    def finish_line(self):
+        if self.line_length:
+            progress = f"[{self.completed * 100 // self.total:3d}%]"
+            padding = " " * max(1, self.width - self.line_length - len(progress))
+            print(padding + self.paint(progress, "dim"), flush=True)
+            self.line_length = 0
+
+    def result(self, case, passed, elapsed):
+        style = "green" if passed else "red"
+        if self.verbose:
+            status = self.paint("PASSED" if passed else "FAILED", style)
+            duration = self.paint(f"({elapsed:.2f}s)", "dim")
+            print(f"{status} {case.label} {duration}", flush=True)
+            self.completed += 1
+            return
+
+        group = ":".join(case.directory) or "."
+        if group != self.group:
+            self.finish_line()
+            self.group = group
+        if not self.line_length:
+            # Leave space for progress even with deeply nested custom suites.
+            label = group if len(group) <= self.width - 16 else "..." + group[-(self.width - 19):]
+            print(self.paint(label, "bold") + " ", end="", flush=True)
+            self.line_length = len(label) + 1
+        print(self.paint("." if passed else "F", style), end="", flush=True)
+        self.completed += 1
+        self.line_length += 1
+        if self.line_length >= self.width - 8:
+            self.finish_line()
+
+    def finish(self, failures, executions, elapsed):
+        self.finish_line()
+        print()
+        if failures:
+            self.heading("failures", "red")
+            for index, (case, message, work, duration) in enumerate(failures, 1):
+                print()
+                print(self.paint(f"{index}) {case.label}", "red"))
+                print(self.paint(f"   {case.stage} / {duration:.2f}s", "dim"))
+                if case.description:
+                    print(textwrap.fill(case.description, width=self.width,
+                                        initial_indent="   ", subsequent_indent="   "))
+                print()
+                for line in message.splitlines():
+                    style = ("green" if line.startswith("+") else
+                             "red" if line.startswith("-") else
+                             "cyan" if line.startswith("@@") else None)
+                    print("    " + (self.paint(line, style) if style else line))
+                print(f"\n   logs: {self.paint(display_path(work), 'dim')}")
+            print()
+        if executions:
+            noun = "check" if executions == 1 else "checks"
+            print(f"{executions} runtime {noun} passed")
+        passed = self.total - len(failures)
+        summary = f"{len(failures)} failed, {passed} passed" if failures else f"{passed} passed"
+        self.heading(f"{summary} in {elapsed:.2f}s", "red" if failures else "green")
+
+    def error(self, message, label="ERROR"):
+        self.finish_line()
+        print(self.paint(label, "red", sys.stderr) + ": " +
+              message.replace("\n", "\n    "), file=sys.stderr, flush=True)
 
 
 def fixture(directory, value):
@@ -83,7 +192,7 @@ def discover(root):
                 source = fixture(manifest.parent, entry["source"])
                 directory = manifest.parent.relative_to(root).parts
                 cases.append(Case(directory, source, entry["stage"],
-                                  entry["compilation_success"], io))
+                                  entry["compilation_success"], io, entry.get("description", "")))
         except (TestError, ValueError, OSError) as error:
             raise TestError(f"{manifest}: {error}") from error
     if not cases:
@@ -156,10 +265,12 @@ def run_case(case, commands, directory, compile_timeout, run_timeout):
         actual = prefix.with_suffix(".stdout").read_bytes()
         expected = expected_file.read_bytes()
         if actual != expected:
-            diff = "".join(difflib.unified_diff(
+            lines = difflib.unified_diff(
                 expected.decode(errors="replace").splitlines(keepends=True),
                 actual.decode(errors="replace").splitlines(keepends=True),
-                fromfile=str(expected_file), tofile="actual stdout"))[:4000]
+                fromfile=display_path(expected_file), tofile="actual stdout")
+            diff = "".join(line if line.endswith("\n") else
+                           line + "\n\\ No newline at end of file\n" for line in lines)[:4000]
             raise TestError(f"io pair {index}: stdout differs (expected {len(expected)} bytes, got {len(actual)})\n{diff}")
 
 
@@ -175,8 +286,11 @@ def main():
     parser.add_argument("--tests-dir", type=Path, default=Path("tests"))
     parser.add_argument("--output-dir", type=Path, default=Path("target/tests"))
     args = parser.parse_args()
+    reporter = Reporter(os.environ.get("VERBOSE", "false").strip().lower() == "true")
+    started = time.monotonic()
     try:
-        cases = select(discover(args.tests_dir.resolve()), os.environ.get("FILTER", ""))
+        selected_filter = os.environ.get("FILTER", "")
+        cases = select(discover(args.tests_dir.resolve()), selected_filter)
         commands = {stage: os.environ.get(f"RX_TEST_{stage.upper()}", "") for stage in (*STAGES, "run")}
         for stage in {c.stage for c in cases} | ({"run"} if any(c.stage == "codegen" for c in cases) else set()):
             if not commands[stage].strip():
@@ -185,31 +299,38 @@ def main():
         run_timeout = positive_timeout("RUN_TIMEOUT", "10")
         args.output_dir.mkdir(parents=True, exist_ok=True)
         directory = Path(tempfile.mkdtemp(prefix="run-", dir=args.output_dir.resolve()))
-        print(f"Running {len(cases)} testcases. Logs: {directory}", flush=True)
+        reporter.start(cases, selected_filter, directory)
         build = os.environ.get("RX_TEST_BUILD", "").strip()
         if build:
+            print("Building compiler ...", flush=True)
+            build_started = time.monotonic()
             code = execute(build, directory / "build", 300)
             if code:
                 raise TestError(f"BUILD exited {code}\n{excerpt(directory / 'build.stderr')}")
-        failures = 0
+            print(reporter.paint(f"Build finished in {time.monotonic() - build_started:.2f}s", "green"), flush=True)
+            print()
+        failures = []
         executions = 0
         for index, case in enumerate(cases, 1):
             work = directory / f"{index:04d}"
             work.mkdir()
+            case_started = time.monotonic()
             try:
                 run_case(case, commands, work, compile_timeout, run_timeout)
                 executions += len(case.io) if case.stage == "codegen" else 0
-                print(f"PASS {case.label}", flush=True)
             except (TestError, OSError) as error:
-                failures += 1
-                print(f"FAIL {case.label}: {error}\n  Logs: {work}", flush=True)
-        print(f"\n{len(cases) - failures} passed; {failures} failed; {executions} runtime checks passed.")
+                elapsed = time.monotonic() - case_started
+                failures.append((case, str(error), work, elapsed))
+                reporter.result(case, False, elapsed)
+            else:
+                reporter.result(case, True, time.monotonic() - case_started)
+        reporter.finish(failures, executions, time.monotonic() - started)
         return 1 if failures else 0
     except (TestError, OSError, ValueError) as error:
-        print(f"error: {error}", file=sys.stderr)
+        reporter.error(str(error))
         return 2
     except KeyboardInterrupt:
-        print("\nInterrupted.", file=sys.stderr)
+        reporter.error("test run interrupted", label="INTERRUPTED")
         return 130
 
 

@@ -3,6 +3,7 @@
 include config.mk
 
 PYTHON ?= python3
+VERBOSE ?= false
 # Directory paths below tests, joined with ':'; separate selections with ','.
 FILTER ?=
 COMPILE_TIMEOUT ?= 30
@@ -13,7 +14,7 @@ export RX_TEST_BUILD = $(BUILD)
 export RX_TEST_SEMANTIC = $(SEMANTIC)
 export RX_TEST_CODEGEN = $(CODEGEN)
 export RX_TEST_RUN = $(RUN)
-export FILTER COMPILE_TIMEOUT RUN_TIMEOUT
+export FILTER COMPILE_TIMEOUT RUN_TIMEOUT VERBOSE
 
 .PHONY: test
 test:

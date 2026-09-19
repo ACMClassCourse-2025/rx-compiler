@@ -1,5 +1,7 @@
 # Rx Compiler Template
 
+> Replace this README with your own README when you start working on your compiler.
+
 ## Getting Started
 
 Welcome to the Rx Compiler course! This repository provides a template from which you can build your own compiler for the Rx programming language. It includes official testcases, a test scaffold, and the G4 representation of Rx to get you started.

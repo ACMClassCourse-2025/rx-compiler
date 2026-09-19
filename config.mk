@@ -21,7 +21,8 @@ CODEGEN = RUST_MIN_STACK=16777216 RX_SOURCE={source} $(REFERENCE_RUSTC) --crate-
 
 # Required alongside CODEGEN: run RV32IM assembly in REIMU.
 # Keep program output separate from simulator messages and cycle profiles.
-RUN = xmake run -P vendor/REIMU reimu -f {output} -o {stdout} -p {profile} 1>&2
+RUN = xmake run -P vendor/REIMU reimu --memory=256M --stack=1M \
+    -f {output} -o {stdout} -p {profile} 1>&2
 
 # Rust reference helper; remove once your commands no longer use it.
 # v0 symbols avoid quoted section names that REIMU does not recognize.

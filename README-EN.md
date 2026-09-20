@@ -98,3 +98,9 @@ Supported environment variables include:
 - `FILTER`, which selects directories under `tests`, using `:` between folder names and `,` between selections. Omit `FILTER` or leave it empty to run all supported tests.
 - `VERBOSE=true`, which shows every test name and its duration instead of grouped progress. Defaults to `false`.
 - `COMPILE_TIMEOUT` and `RUN_TIMEOUT`, which override the default timeouts for compilation and execution.
+
+## CI/CD support
+
+This repo comes with a GitHub Actions workflow that runs tests on every push and pull request. We advise turning it off while you develop the compiler and turning it back on when the compiler is ready for test-based development.
+
+To disable the test, rename `.github/workflows/test.yml` to `.github/workflows/test.yml.disabled`. GitHub Actions will only discover `*.yml` and `*.yaml` files.

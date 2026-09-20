@@ -98,3 +98,9 @@ make test VERBOSE=true
 - `FILTER`：用于筛选 `tests` 下的目录，文件夹名称之间使用 `:` 分隔，不同项之间使用 `,` 分隔。省略 `FILTER` 或留空则运行所有支持的测试。
 - `VERBOSE=true`：显示每个测试的名称及其耗时，而非分组进度。默认为 `false`。
 - `COMPILE_TIMEOUT` 与 `RUN_TIMEOUT`：覆盖默认的编译与运行超时时限。
+
+## CI/CD 支持
+
+本仓库提供了 GitHub Actions 工作流，支持在每次提交或者 PR 时自动运行测试。你可以在 `.github/workflows/` 目录下查看或修改工作流配置。我们建议你在前期开发阶段禁用 CI/CD 流水线，并在编译器接近完成时再启用。
+
+你可以将 `.github/workflows/test.yml` 重命名为 `.github/workflows/test.yml.disabled` 来禁用测试。GitHub Actions 仅会识别 `*.yml` 和 `*.yaml` 文件。

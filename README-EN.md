@@ -16,14 +16,14 @@ Initialize the testcases and [REIMU](https://github.com/wanoful/REIMU) submodule
 git submodule update --init --recursive
 ```
 
-It requires Python 3, [xmake](https://xmake.io/), and a C++23 compiler to build REIMU. Build REIMU separately from the project root before running tests:
+Python 3, [xmake](https://xmake.io/) and any C++23 compiler is needed to build REIMU. Build REIMU separately from the project root before running tests:
 
 ```sh
 xmake f -y -P vendor/REIMU -m release -o target/reimu
 xmake -y -P vendor/REIMU
 ```
 
-Repeat these commands after updating the REIMU submodule. `make test` builds the reference runtime through `BUILD`. Codegen tests compile to RV32IM assembly and execute in REIMU, with testcase input and output connected to stdin and stdout.
+Rerun these commands after updating the REIMU submodule.
 
 If you want to run default `rustc` test, install `rustup`, and run
 ```sh

@@ -23,7 +23,7 @@ xmake f -y -P vendor/REIMU -m release -o target/reimu
 xmake -y -P vendor/REIMU
 ```
 
-在更新 REIMU 子模块后需重复执行上述命令。`make test` 会通过 `BUILD` 构建参考运行时。代码生成测试会将代码编译为 RV32IM 汇编并在 REIMU 中执行，测试用例的输入和输出将分别连接至标准输入（stdin）和标准输出（stdout）。
+在更新 REIMU 子模块后需重复执行上述命令。
 
 如果你想要运行默认的 `rustc` 测试，请先安装 `rustup`，然后运行
 ```sh

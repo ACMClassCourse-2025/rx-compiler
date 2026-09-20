@@ -9,3 +9,7 @@
 
 # Python test runner
 __pycache__/
+
+# Local files
+dev/
+*.local.*

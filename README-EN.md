@@ -1,8 +1,8 @@
 # Rx Compiler Template
 
-[English](README.md.en) | [简体中文](README.md)
+[English](README-EN.md) | [简体中文](README-ZH.md)
 
-> Replace this README with your own README when you start working on your compiler.
+> Replace this with your own README when you start working on your compiler.
 
 ## Getting Started
 

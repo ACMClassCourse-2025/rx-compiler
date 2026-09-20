@@ -25,6 +25,11 @@ xmake -y -P vendor/REIMU
 
 Repeat these commands after updating the REIMU submodule. `make test` builds the reference runtime through `BUILD`. Codegen tests compile to RV32IM assembly and execute in REIMU, with testcase input and output connected to stdin and stdout.
 
+If you want to run default `rustc` test, install `rustup`, and run
+```sh
+rustup target add riscv32im-unknown-none-elf
+```
+
 ## Overview
 
 In this course you can use **any language** to implement your compiler. Contact the TA if your language is not mainstream so that we can provide support for it on the Online Judge. For this reason, the template we provide here is **language-agnostic**. You will find:

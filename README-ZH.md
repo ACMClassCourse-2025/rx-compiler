@@ -25,6 +25,11 @@ xmake -y -P vendor/REIMU
 
 在更新 REIMU 子模块后需重复执行上述命令。`make test` 会通过 `BUILD` 构建参考运行时。代码生成测试会将代码编译为 RV32IM 汇编并在 REIMU 中执行，测试用例的输入和输出将分别连接至标准输入（stdin）和标准输出（stdout）。
 
+如果你想要运行默认的 `rustc` 测试，请先安装 `rustup`，然后运行
+```sh
+rustup target add riscv32im-unknown-none-elf
+```
+
 ## 概述
 
 在本门课程中，你可以使用**任意语言**来实现你的编译器。如果你的实现语言较为冷门，请联系助教以便我们在 Online Judge（评测机）上提供支持。因此，我们在此提供的模板是**与实现语言无关的（language-agnostic）**。仓库中包含：

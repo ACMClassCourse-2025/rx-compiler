@@ -1,12 +1,15 @@
 # Rx 编译器模板
 
+[![Tests](https://github.com/ACMClassCourse-2025/rx-compiler/actions/workflows/test.yml/badge.svg)](https://github.com/ACMClassCourse-2025/rx-compiler/actions/workflows/test.yml)
+[![Target: RV32IM](https://img.shields.io/badge/target-RV32IM-283272)](https://msyksphinz-self.github.io/riscv-isadoc/)
+[![Simulator: REIMU](https://img.shields.io/badge/simulator-REIMU-d73a49)](https://github.com/wanoful/REIMU)
 [English](README-EN.md) | [简体中文](README-ZH.md)
 
 > 开始编写你的编译器时，请用你自己的 README 替换本文档。
 
 ## 快速上手
 
-欢迎来到 Rx Compiler！本仓库提供了一个工程模板，供你基于此构建自己的 Rx 编程语言编译器。它包含了官方测试用例、测试脚手架以及 Rx 语言的 G4 文法定义，帮助你快速起步。
+欢迎来到 Rx Compiler！本仓库提供了一个工程模板，供你基于此构建自己的 [Rx 编程语言](https://acmclasscourse-2025.github.io/rx-compiler-specification/) 编译器。它包含了官方测试用例、测试脚手架以及 Rx 语言的 G4 文法定义，帮助你快速起步。
 
 我们强烈建议你 **Fork 本仓库**，以便我们在更新官方测试用例时你可以方便地同步更新。Fork 之后，将其克隆到你的本地。
 

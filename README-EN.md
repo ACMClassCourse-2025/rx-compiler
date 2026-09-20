@@ -1,12 +1,17 @@
 # Rx Compiler Template
 
+[![Tests](https://github.com/ACMClassCourse-2025/rx-compiler/actions/workflows/test.yml/badge.svg)](https://github.com/ACMClassCourse-2025/rx-compiler/actions/workflows/test.yml)
+[![Target: RV32IM](https://img.shields.io/badge/target-RV32IM-283272)](https://msyksphinz-self.github.io/riscv-isadoc/)
+[![Simulator: REIMU](https://img.shields.io/badge/simulator-REIMU-d73a49)](https://github.com/wanoful/REIMU)
+
+
 [English](README-EN.md) | [简体中文](README-ZH.md)
 
 > Replace this with your own README when you start working on your compiler.
 
 ## Getting Started
 
-Welcome to the Rx Compiler course! This repository provides a template from which you can build your own compiler for the Rx programming language. It includes official testcases, a test scaffold, and the G4 representation of Rx to get you started.
+Welcome to the Rx Compiler course! This repository provides a template from which you can build your own compiler for [the Rx programming language](https://acmclasscourse-2025.github.io/rx-compiler-specification/). It includes official testcases, a test scaffold, and the G4 representation of Rx to get you started.
 
 We strongly recommend that you **fork this repository** instead of downloading zips, in case we need to update the official testcases. After forking your copy, clone it to your local machine.
 

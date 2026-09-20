@@ -36,7 +36,7 @@ rustup target add riscv32im-unknown-none-elf
 
 - `tests/` 目录下的测试用例。官方测试用例位于 `tests/official`（作为 Git 子模块引入）。你可以在 `tests/custom` 下添加自己的测试用例。
 - 测试运行器（Test runner）。`Makefile` 会调用在 `config.mk` 中配置的编译器来运行测试用例。默认情况下，它使用系统安装的 rustc（目标架构为 `riscv32im-unknown-none-elf`），并在 REIMU 中执行生成的汇编代码。**请将 `config.mk` 中的编译器命令替换为你自己的编译器命令**，以此为你的编译器配置测试。详见[运行测试](#运行测试)。
-    - 一些辅助文件用于帮助默认的 rustc 输出适合 REIMU 的汇编文件。其中 `scripts/reference.rs` 提供了裸机程序入口点（bare-metal entry point）、`Box`/`Vec` 内存分配以及 panic 处理；`crates/rx` 通过 REIMU 的 libc 实现了整数 I/O。默认的 codegen 命令同时请求生成汇编和静态库，以便 rustc 进行全程序 LTO（链接时优化）并将运行时包含在汇编中。生成的额外 `{output}.a` 属于构建产物；在 `scripts/strip_asm_debug.py` 去除 REIMU 无法汇编的调试元数据后，`RUN` 将消费并执行 `{output}`。当你将编译器命令替换为你自己的编译器时，这些辅助文件均可移除。
+    - 一些辅助文件（如 `crates/rx` 中的参考编译器辅助代码）用于帮助默认的 rustc 输出适合 REIMU 的汇编文件。其中 `src/entry.rs` 针对每个测试用例单独编译，提供裸机程序入口点以及 `Box`/`Vec` 导入；库通过 REIMU 的 libc 实现了整数 I/O，并在 `src/runtime.rs` 中为裸机 RV32 目标提供内存分配与 panic 处理。默认的 codegen 命令同时请求生成汇编和静态库，以便 rustc 进行全程序 LTO（链接时优化）并将运行时包含在汇编中。生成的额外 `{output}.a` 属于构建产物；在 `scripts/strip_asm_debug.py` 去除 REIMU 无法汇编的调试元数据后，`RUN` 将消费并执行 `{output}`。当你将编译器命令替换为你自己的编译器时，这些辅助文件均可移除。
 - `vendor/REIMU` 下的 REIMU，为 Git 子模块。`config.mk` 中的 `RUN` 命令会调用它；测试运行器本身并不依赖特定的模拟器。
 - `grammar/` 目录下的 Rx 语言 G4 文法。你可以使用它来为编译器生成词法分析器和语法分析器。
 

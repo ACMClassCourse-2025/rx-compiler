@@ -8,7 +8,7 @@ BUILD = CARGO_PROFILE_RELEASE_LTO=true cargo build --quiet --locked --release \
 
 # Required for semantic tests: exit 0 to accept {source}, 1 to reject it.
 SEMANTIC = RX_SOURCE={source} $(REFERENCE_RUSTC) --cfg rx_semantic \
-    --emit=metadata scripts/reference.rs -o {output}
+    --emit=metadata crates/rx/src/entry.rs -o {output}
 
 # Required for codegen/optimization tests: compile {source} into {output}.
 # To test LLVM IR, write RV32-compatible IR to {output}.ir and append:
@@ -16,7 +16,7 @@ SEMANTIC = RX_SOURCE={source} $(REFERENCE_RUSTC) --cfg rx_semantic \
 #   && $(PYTHON) scripts/strip_asm_debug.py {output}
 CODEGEN = RUST_MIN_STACK=16777216 RX_SOURCE={source} $(REFERENCE_RUSTC) --crate-type=staticlib \
     --emit=asm={output},link={output}.a -C opt-level=2 -C lto=fat \
-    -C llvm-args=-riscv-no-aliases scripts/reference.rs && \
+    -C llvm-args=-riscv-no-aliases crates/rx/src/entry.rs && \
     $(PYTHON) scripts/strip_asm_debug.py {output}
 
 # Required alongside CODEGEN: run RV32IM assembly in REIMU.

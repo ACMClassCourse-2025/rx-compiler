@@ -19,6 +19,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential
 
+      - name: Install Clang 22 for LLVM IR tests
+        run: |
+          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/llvm.gpg
+          echo 'deb [signed-by=/usr/share/keyrings/llvm.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-22 main' | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y clang-22
+
       - name: Set up xmake
         uses: xmake-io/github-action-setup-xmake@v1
         with:
@@ -31,8 +38,8 @@ jobs:
 
       - name: Set up Rust
         run: |
-          rustup toolchain install stable --profile minimal --target riscv32im-unknown-none-elf
-          rustup default stable
+          rustup toolchain install 1.95.0 --profile minimal --target riscv32im-unknown-none-elf
+          rustup default 1.95.0
 
       - name: Run tests
         run: make test

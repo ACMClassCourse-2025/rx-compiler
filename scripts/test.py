@@ -17,9 +17,11 @@ import tempfile
 import textwrap
 import time
 
+from strip_asm_debug import strip_debug
 
-RUNTIME_STAGES = ("codegen", "optimization")
+RUNTIME_STAGES = ("ir", "codegen", "optimization")
 STAGES = ("semantic", *RUNTIME_STAGES)
+MANIFEST_STAGES = ("semantic", "codegen", "optimization")
 
 
 class TestError(Exception):
@@ -38,7 +40,8 @@ class Case:
     @property
     def label(self):
         directory = ":".join(self.directory)
-        return f"{directory}/{self.source.name}" if directory else self.source.name
+        name = f"{directory}/{self.source.name}" if directory else self.source.name
+        return f"{name}@{self.stage}"
 
     @property
     def optimization(self):
@@ -46,8 +49,7 @@ class Case:
 
     @property
     def compiler_command(self):
-        # Both runtime stages use the CODEGEN command from config.mk.
-        return "codegen" if self.stage in RUNTIME_STAGES else self.stage
+        return "codegen" if self.stage == "optimization" else self.stage
 
 
 def display_path(path):
@@ -107,7 +109,7 @@ class Reporter:
             self.completed += 1
             return
 
-        group = ":".join(case.directory) or "."
+        group = (":".join(case.directory) or ".") + f"@{case.stage}"
         if group != self.group:
             self.finish_line()
             self.group = group
@@ -193,7 +195,7 @@ def discover(root):
                     raise TestError(f"entry {index}: invalid testcase fields")
                 if not {"source", "stage", "compilation_success"} <= entry.keys():
                     raise TestError(f"entry {index}: missing required testcase fields")
-                if entry["stage"] not in STAGES or type(entry["compilation_success"]) is not bool:
+                if entry["stage"] not in MANIFEST_STAGES or type(entry["compilation_success"]) is not bool:
                     raise TestError(f"entry {index}: invalid stage or compilation_success")
                 if "description" in entry and not isinstance(entry["description"], str):
                     raise TestError(f"entry {index}: description must be a string")
@@ -215,11 +217,13 @@ def discover(root):
                 directory = manifest.parent.relative_to(root).parts
                 cases.append(Case(directory, source, entry["stage"],
                                   entry["compilation_success"], io, entry.get("description", "")))
+                if entry["stage"] == "codegen":
+                    cases.append(Case(directory, source, "ir", True, io, entry.get("description", "")))
         except (TestError, ValueError, OSError) as error:
             raise TestError(f"{manifest}: {error}") from error
     if not cases:
         raise TestError(f"no semantic, codegen, or optimization testcases found under {root}")
-    return cases
+    return [case for stage in STAGES for case in cases if case.stage == stage]
 
 
 def select(cases, expression):
@@ -238,8 +242,9 @@ def select(cases, expression):
     return [c for c in cases if any(c.directory[:len(parts)] == parts for parts in selectors)]
 
 
-def expand(command, source, output, **paths):
-    values = {"source": source, "output": output, **paths}
+def expand(command, source=None, output=None, **paths):
+    values = {key: value for key, value in {"source": source, "output": output, **paths}.items()
+              if value is not None}
     pattern = r"\{(" + "|".join(values) + r")\}"
     return re.sub(pattern, lambda match: shlex.quote(str(values[match[1]])), command)
 
@@ -290,10 +295,12 @@ def write_cycle_report(directory, cycles):
     return path
 
 
-def run_case(case, commands, directory, compile_timeout, run_timeout):
-    output = directory / "program"
+def run_case(case, commands, directory, compile_timeout, run_timeout, runtime=b""):
+    output = directory / ("program.ll" if case.stage == "ir" else "program.s")
+    runtime_path = directory / "runtime.s"
+    runtime_path.write_bytes(b"")
     prefix = directory / "compile"
-    command = expand(commands[case.compiler_command], case.source, output)
+    command = expand(commands[case.compiler_command], case.source, output, runtime=runtime_path)
     code = execute(command, prefix, compile_timeout)
     # Exit 1 is a normal diagnostic rejection. Panics, signals, missing tools,
     # and other unexpected exits must never pass a negative testcase.
@@ -304,12 +311,31 @@ def run_case(case, commands, directory, compile_timeout, run_timeout):
         return []
     if not output.is_file():
         raise TestError("compiler succeeded but did not create {output}")
+    if case.stage == "ir":
+        assembly = directory / "program.s"
+        prefix = directory / "clang"
+        command = shlex.join([
+            os.environ.get("CLANG", "clang-22"), "-S", "-x", "ir", str(output),
+            "-o", str(assembly), "--target=riscv32-unknown-none-elf",
+            "-march=rv32im", "-mabi=ilp32", "-O0", "-mllvm", "-riscv-no-aliases",
+        ])
+        code = execute(command, prefix, compile_timeout)
+        if code:
+            raise TestError(f"Clang could not compile LLVM IR (exit {code})\n{excerpt(prefix.with_suffix('.stderr'))}")
+        if not assembly.is_file():
+            raise TestError("Clang succeeded but did not create assembly")
+        assembly.write_text(strip_debug(assembly.read_text()))
+        output = assembly
     cycles = []
     for index, (stdin, expected_file) in enumerate(case.io, 1):
+        # Every execution gets the runtime captured after BUILD.
+        runtime_path.unlink(missing_ok=True)
+        runtime_path.write_bytes(runtime)
         prefix = directory / f"run-{index}"
         stdout = prefix.with_suffix(".stdout")
         profile = prefix.with_suffix(".profile")
-        command = expand(commands["run"], case.source, output, stdout=stdout, profile=profile)
+        command = expand(commands["run"], case.source, output, stdout=stdout, profile=profile,
+                         runtime=runtime_path)
         code = execute(command, prefix, run_timeout, stdin)
         if code != 0:
             raise TestError(f"io pair {index}: program exited {code}\n{excerpt(prefix.with_suffix('.stderr'))}")
@@ -345,14 +371,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tests-dir", type=Path, default=Path("tests"))
     parser.add_argument("--output-dir", type=Path, default=Path("target/tests"))
+    parser.add_argument("--stage", choices=STAGES, default=None)
     args = parser.parse_args()
     reporter = Reporter(os.environ.get("VERBOSE", "false").strip().lower() == "true")
     started = time.monotonic()
     try:
         selected_filter = os.environ.get("FILTER", "")
         cases = select(discover(args.tests_dir.resolve()), selected_filter)
+        stage = args.stage or os.environ.get("STAGE", "").strip()
+        if stage:
+            if stage not in STAGES:
+                raise TestError("STAGE must be semantic, ir, codegen, or optimization")
+            cases = [case for case in cases if case.stage == stage]
+            if not cases:
+                raise TestError(f"no {stage} testcases match the selection")
         commands = {name: os.environ.get(f"RX_TEST_{name.upper()}", "")
-                    for name in ("semantic", "codegen", "run")}
+                    for name in ("semantic", "ir", "codegen", "run")}
         for stage in {c.compiler_command for c in cases} | ({"run"} if any(c.stage in RUNTIME_STAGES for c in cases) else set()):
             if not commands[stage].strip():
                 raise TestError(f"set {stage.upper()} in config.mk before running these tests")
@@ -361,15 +395,20 @@ def main():
         args.output_dir.mkdir(parents=True, exist_ok=True)
         directory = Path(tempfile.mkdtemp(prefix="run-", dir=args.output_dir.resolve()))
         reporter.start(cases, selected_filter, directory)
+        runtime = directory / "runtime.s"
+        runtime.write_bytes(b"")
         build = os.environ.get("RX_TEST_BUILD", "").strip()
         if build:
             print("Building compiler ...", flush=True)
             build_started = time.monotonic()
-            code = execute(build, directory / "build", 300)
+            code = execute(expand(build, runtime=runtime), directory / "build", 300)
             if code:
                 raise TestError(f"BUILD exited {code}\n{excerpt(directory / 'build.stderr')}")
             print(reporter.paint(f"Build finished in {time.monotonic() - build_started:.2f}s", "green"), flush=True)
             print()
+        if runtime.is_symlink() or not runtime.is_file() or runtime.stat().st_size > 8 * 1024 * 1024:
+            raise TestError("BUILD must leave {runtime} as a regular assembly file of at most 8 MiB")
+        runtime_bytes = runtime.read_bytes()
         failures = []
         executions = 0
         cycles = []
@@ -378,7 +417,7 @@ def main():
             work.mkdir()
             case_started = time.monotonic()
             try:
-                case_cycles = run_case(case, commands, work, compile_timeout, run_timeout)
+                case_cycles = run_case(case, commands, work, compile_timeout, run_timeout, runtime_bytes)
                 cycles.extend(case_cycles)
                 executions += len(case.io) if case.stage in RUNTIME_STAGES else 0
             except (TestError, OSError) as error:
